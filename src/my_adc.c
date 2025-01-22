@@ -7,90 +7,41 @@ static const char *TAG = "ADC_CONTINUOUS";
 adc_continuous_handle_t adc_handle = NULL;
 
 // DMA ??????
-uint8_t dma_buffer[DMA_BUFFER_SIZE] = {0};
-int16_t raw_adc_value[DMA_BUFFER_SIZE / 4] = {0};
+uint8_t __attribute__((aligned(4))) dma_buffer[ADC_READ_LEN] = {0};
+// int16_t raw_adc_value[DMA_BUFFER_SIZE / 4] = {0};
 SemaphoreHandle_t adc_semaphore = NULL;
-int16_t i2s_data[DMA_BUFFER_SIZE * 2] = {0};
-uint32_t ret_num = 0; // ????????????????
+int16_t __attribute__((aligned(4))) i2s_data[1280] = {0}; // 640???? * 2??????
+uint32_t ret_num = 0;                                     // ????????????????
 TaskHandle_t s_task_handle = NULL;
+
 bool pool_ovf_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
 {
     esp_rom_printf("pool_ovf_cb\r\n");
-    // adc_continuous_read(adc_handle, dma_buffer, DMA_BUFFER_SIZE, &ret_num, 0);
-    // ESP_LOGW(TAG, "Pool overflow");
-    /* copilot
-     BaseType_t high_task_awoken = pdFALSE;
-
-    // ???????????????
-    uint32_t ret_num = 0;
-    esp_err_t ret = adc_continuous_read(handle, dma_buffer, DMA_BUFFER_SIZE, &ret_num, 0);
-
-    if (ret == ESP_OK && ret_num > 0)
-    {
-        // ????ADC?????????????????
-        int16_t temp_buffer[256];
-        int temp_index = 0;
-
-        for (int i = 0; i < ret_num; i += 4)
-        {
-            uint32_t raw_value = *(uint32_t *)(dma_buffer + i);
-            uint16_t value = raw_value & 0xFFF;
-            temp_buffer[temp_index++] = (((int16_t)value) - 2048) << 4;
-
-            if (temp_index >= 256)
-            {
-                ring_buffer_write(temp_buffer, temp_index);
-                temp_index = 0;
-                return high_task_awoken == pdTRUE;
-    }
-}
-    }
-
-    portYIELD_FROM_ISR(high_task_awoken);
-    high_task_awoken == */
     return pdTRUE; // ???????????
 }
 
 bool IRAM_ATTR on_conversion_done(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
 {
-    BaseType_t mustYield = pdFALSE;
-    esp_rom_printf("on_conversion_done\r\n");
+    // BaseType_t mustYield = pdFALSE;
+    // // esp_rom_printf("on_conversion_done\r\n");
+    // vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
+    // return (mustYield == pdTRUE);
 
-    // Notify that ADC continuous driver has done enough number of conversions
-    vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-    return (mustYield == pdTRUE);
+    // 检查任务句柄是否有效
+    if (s_task_handle != NULL)
+    {
+        vTaskNotifyGiveFromISR(s_task_handle, &xHigherPriorityTaskWoken);
+    }
 
-    // BaseType_t high_task_awoken = pdFALSE;
-    // // ??????ADC????
-    // int16_t temp_buffer[ADC_READ_LEN / 4];
-    // uint8_t *conv_data = edata->conv_frame_buffer;
-    // uint32_t size = edata->size;
-
-    // int temp_index = 0;
-    // for (int i = 0; i < size; i += 4)
-    // {
-    //     uint32_t raw_value = *(uint32_t *)(conv_data + i);
-    //     uint16_t value = raw_value & 0xFFF;
-    //     temp_buffer[temp_index++] = (((int16_t)value) - 2048) << 4;
-    // }
-    // // ????????????
-    // if (temp_index > 0)
-    // {
-    //     ring_buffer_write(temp_buffer, temp_index);
-    // }
-    // // adc_continuous_read(adc_handle, temp_buffer, ADC_READ_LEN, &ret_num, 0);
-    // //  ??????????????
-    // //  ESP_LOGI("ADC_CONTINUOUS", "Conversion done, sample: %d", edata->sample);
-    // //  ???? edata->buffer ????????
-    // portYIELD_FROM_ISR(high_task_awoken);
-    // return high_task_awoken == pdTRUE; // ???????????
+    // 直接返回高优先级任务唤醒状态
+    return xHigherPriorityTaskWoken;
 }
-// ????? ADC ??????
 
 void adc_continuous_init()
 {
-    ESP_LOGI(TAG, "Initializing ADC continuous mode");
+    // ESP_LOGI(TAG, "Initializing ADC continuous mode");
     // ??????????????
     adc_semaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(adc_semaphore);
@@ -127,11 +78,12 @@ void adc_continuous_init()
     //
 
     ESP_ERROR_CHECK(adc_continuous_config(adc_handle, &adc_config));
-    ESP_LOGI(__func__, "ADC continuous mode initialized");
+    // ESP_LOGI(__func__, "ADC continuous mode initialized");
 }
 void process_adc_data()
 {
     int16_t *i2s_ptr = i2s_data;
+    int16_t sample = 0;
     for (int i = 0; i < ret_num; i += 4)
     {
         uint32_t raw_value = *(uint32_t *)(dma_buffer + i);
@@ -139,37 +91,43 @@ void process_adc_data()
         if (channel == 0)
         {
             uint16_t value = raw_value & 0xFFF;
-            int16_t sample = (((int16_t)value) - 2048);
+            sample = (((int16_t)value) - 700) << 1;
+
             *i2s_ptr++ = sample; // ??????
-                                 // *i2s_ptr++ = sample; // ??????
+            *i2s_ptr++ = sample; // ??????
         }
     }
 }
+
 size_t bytes_success_preload = 0;
 bool ringbuffer_write_result = true;
-// ??? ADC ????????
+
 void adc_continuous_read_task(void *arg)
 {
 
     vTaskPrioritySet(NULL, 24);
     while (1)
     {
+
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         esp_err_t ret = adc_continuous_read(adc_handle, dma_buffer, DMA_BUFFER_SIZE, &ret_num, 0);
         if (ret == ESP_OK)
         {
-            esp_rom_printf("adc read %lu bytes try to write\n", ret_num);
+            // esp_rom_printf("adc read %lu bytes try to write\n", ret_num);
             process_adc_data();
-            ringbuffer_write_result = ring_buffer_write(i2s_data, ret_num);
+            ringbuffer_write_result = ring_buffer_write(i2s_data, ret_num / 4 * 2 * sizeof(int16_t));
             if (ringbuffer_write_result == false)
             {
                 esp_rom_printf("Failed to write to ring buffer\n");
             }
-            // i2s_channel_write(tx_chan, i2s_data, sizeof(i2s_data), &bytes_written, 0);
+            if (audio_task_handle != NULL)
+            {
+                xTaskNotifyGive(audio_task_handle);
+            }
         }
         else
         {
-            ESP_LOGE(TAG, "adc_continuous_read failed");
+            ESP_LOGE(TAG, "adc_continuous_read failed with error: %s", esp_err_to_name(ret));
         }
     }
 }
