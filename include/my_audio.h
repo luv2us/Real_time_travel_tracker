@@ -8,7 +8,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
-#include "raw_data.h"
 
 // ÒôÆµÅäÖÃ
 #define SAMPLE_RATE 8000 // ²ÉÑùÂÊ

@@ -18,10 +18,11 @@ void ringbuffer_read_test(void *pvParameters)
         // ?????
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        size_t read_len = ring_buffer_read(read_from_ringbuffer, sizeof(read_from_ringbuffer));
+        size_t read_len = ring_buffer_read(read_from_ringbuffer, ADC_READ_LEN);
         if (read_len > 0)
         {
-            esp_err_t ret = i2s_channel_write(tx_chan, read_from_ringbuffer, read_len, &bytes_written, portMAX_DELAY);
+            printf("read_len: %d\n", read_len);
+            esp_err_t ret = i2s_channel_write(tx_chan, read_from_ringbuffer, read_len, NULL, portMAX_DELAY);
             if (ret != ESP_OK)
             {
                 ESP_LOGE("I2S", "Write failed: %s", esp_err_to_name(ret));
@@ -39,11 +40,11 @@ void app_main()
     ring_buffer_create();
     i2s_init();
     adc_continuous_init();
-    Speex_Init();
-    stream_buffer_create();
+    // Speex_Init();
+    // stream_buffer_create();
 
-    xTaskCreate(ringbuffer_read_test, "audio_task", 4096, NULL, 11, &audio_task_handle);
-    xTaskCreate(adc_continuous_read_task, "adc_read_task", 4096, NULL, 10, &s_task_handle);
+    xTaskCreate(ringbuffer_read_test, "audio_task", 8192, NULL, 8, &audio_task_handle);
+    xTaskCreate(adc_continuous_read_task, "adc_read_task", 8192, NULL, 10, &s_task_handle);
 
     ESP_ERROR_CHECK(adc_continuous_start(adc_handle));
 

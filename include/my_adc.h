@@ -21,9 +21,9 @@
 extern adc_continuous_handle_t adc_handle;
 extern SemaphoreHandle_t adc_semaphore;
 
-extern uint8_t __attribute__((aligned(4))) dma_buffer[ADC_READ_LEN];
+extern uint8_t __attribute__((aligned(32))) dma_buffer[ADC_READ_LEN];
 // extern int16_t raw_adc_value[DMA_BUFFER_SIZE / 4];
-extern int16_t __attribute__((aligned(4))) i2s_data[1280];
+extern int16_t __attribute__((aligned(32))) i2s_data[1280];
 void adc_continuous_init();
 void adc_continuous_read_task(void *arg);
 

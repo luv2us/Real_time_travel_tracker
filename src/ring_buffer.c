@@ -55,7 +55,7 @@ size_t stream_buffer_get_free_size(void)
 // Original ring buffer functions (keep existing implementation)
 void ring_buffer_create(void)
 {
-    audio_buffer.buffer = heap_caps_aligned_alloc(16, RING_BUFFER_SIZE * sizeof(int16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    audio_buffer.buffer = heap_caps_aligned_alloc(32, RING_BUFFER_SIZE * sizeof(int16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (audio_buffer.buffer == NULL)
     {
         esp_rom_printf("Failed to allocate buffer");
