@@ -1,13 +1,11 @@
 #include "my_audio.h"
 #include "my_adc.h"
 #include "ring_buffer.h"
-#include "my_speex.h"
 #include "freertos/task.h"
 
 size_t bytes_written = 0;
 
 int16_t read_from_ringbuffer[2560];
-int16_t frame_buffer[FRAME_SIZE] = {0};
 
 void ringbuffer_read_test(void *pvParameters)
 {
