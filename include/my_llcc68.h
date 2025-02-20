@@ -1,0 +1,534 @@
+#ifndef _MY_LLCC68_H_
+#define _MY_LLCC68_H_
+
+// #ifdef __cplusplus
+// extern "C"
+// {
+// #endif
+
+#include <math.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "radio.h"
+#include "llcc68_types.h"
+#define SX1261 1
+#define SX1262 2
+
+/*!
+ * Radio complete Wake-up Time with margin for temperature compensation
+ */
+#define RADIO_WAKEUP_TIME 3 // [ms]
+
+/*!
+ * \brief Compensation delay for SetAutoTx/Rx functions in 15.625 microseconds
+ */
+#define AUTO_RX_TX_OFFSET 2
+
+/*!
+ * \brief LFSR initial value to compute IBM type CRC
+ */
+#define CRC_IBM_SEED 0xFFFF
+
+/*!
+ * \brief LFSR initial value to compute CCIT type CRC
+ */
+#define CRC_CCITT_SEED 0x1D0F
+
+/*!
+ * \brief Polynomial used to compute IBM CRC
+ */
+#define CRC_POLYNOMIAL_IBM 0x8005
+
+/*!
+ * \brief Polynomial used to compute CCIT CRC
+ */
+#define CRC_POLYNOMIAL_CCITT 0x1021
+
+/*!
+ * \brief The address of the register holding the first byte defining the CRC seed
+ *
+ */
+#define REG_LR_CRCSEEDBASEADDR 0x06BC
+
+/*!
+ * \brief The address of the register holding the first byte defining the CRC polynomial
+ */
+#define REG_LR_CRCPOLYBASEADDR 0x06BE
+
+/*!
+ * \brief The address of the register holding the first byte defining the whitening seed
+ */
+#define REG_LR_WHITSEEDBASEADDR_MSB 0x06B8
+#define REG_LR_WHITSEEDBASEADDR_LSB 0x06B9
+
+/*!
+ * \brief The address of the register holding the packet configuration
+ */
+#define REG_LR_PACKETPARAMS 0x0704
+
+/*!
+ * \brief The address of the register holding the payload size
+ */
+#define REG_LR_PAYLOADLENGTH 0x0702
+
+/*!
+ * \brief The address of the register holding the re-calculated number of symbols
+ */
+#define REG_LR_SYNCH_TIMEOUT 0x0706
+
+/*!
+ * \brief The addresses of the registers holding SyncWords values
+ */
+#define REG_LR_SYNCWORDBASEADDRESS 0x06C0
+
+/*!
+ * \brief The addresses of the register holding LoRa Modem SyncWord value
+ */
+#define REG_LR_SYNCWORD 0x0740
+
+/*!
+ * Syncword for Private LoRa networks
+ */
+#define LORA_MAC_PRIVATE_SYNCWORD 0x1424
+
+/*!
+ * Syncword for Public LoRa networks
+ */
+#define LORA_MAC_PUBLIC_SYNCWORD 0x3444
+
+/*!
+ * The address of the register giving a 32-bit random number
+ */
+#define RANDOM_NUMBER_GENERATORBASEADDR 0x0819
+
+/*!
+ * The address of the register used to disable the LNA
+ */
+#define REG_ANA_LNA 0x08E2
+
+/*!
+ * The address of the register used to disable the mixer
+ */
+#define REG_ANA_MIXER 0x08E5
+
+/*!
+ * The address of the register holding RX Gain value (0x94: power saving, 0x96: rx boosted)
+ */
+#define REG_RX_GAIN 0x08AC
+
+/*!
+ * Change the value on the device internal trimming capacitor
+ */
+#define REG_XTA_TRIM 0x0911
+
+/*!
+ * Set the current max value in the over current protection
+ */
+#define REG_OCP 0x08E7
+/*!
+ * ============================================================================
+ * Public functions prototypes
+ * ============================================================================
+ */
+
+/*!
+ * \brief Initializes the radio driver
+ */
+void LLCC68Init(DioIrqHandler dioIrq);
+
+/*!
+ * \brief Wakeup the radio if it is in Sleep mode and check that Busy is low
+ */
+void LLCC68CheckDeviceReady(void);
+
+/*!
+ * \brief Saves the payload to be send in the radio buffer
+ *
+ * \param [in]  payload       A pointer to the payload
+ * \param [in]  size          The size of the payload
+ */
+void LLCC68SetPayload(uint8_t *payload, uint8_t size);
+
+/*!
+ * \brief Reads the payload received. If the received payload is longer
+ * than maxSize, then the method returns 1 and do not set size and payload.
+ *
+ * \param [out] payload       A pointer to a buffer into which the payload will be copied
+ * \param [out] size          A pointer to the size of the payload received
+ * \param [in]  maxSize       The maximal size allowed to copy into the buffer
+ */
+uint8_t LLCC68GetPayload(uint8_t *payload, uint8_t *size, uint8_t maxSize);
+
+/*!
+ * \brief Sends a payload
+ *
+ * \param [in]  payload       A pointer to the payload to send
+ * \param [in]  size          The size of the payload to send
+ * \param [in]  timeout       The timeout for Tx operation
+ */
+void LLCC68SendPayload(uint8_t *payload, uint8_t size, uint32_t timeout);
+
+/*!
+ * \brief Sets the Sync Word given by index used in GFSK
+ *
+ * \param [in]  syncWord      SyncWord bytes ( 8 bytes )
+ *
+ * \retval      status        [0: OK, 1: NOK]
+ */
+uint8_t LLCC68SetSyncWord(uint8_t *syncWord);
+
+/*!
+ * \brief Sets the Initial value for the LFSR used for the CRC calculation
+ *
+ * \param [in]  seed          Initial LFSR value ( 2 bytes )
+ *
+ */
+void LLCC68SetCrcSeed(uint16_t seed);
+
+/*!
+ * \brief Sets the seed used for the CRC calculation
+ *
+ * \param [in]  seed          The seed value
+ *
+ */
+void LLCC68SetCrcPolynomial(uint16_t polynomial);
+
+/*!
+ * \brief Sets the Initial value of the LFSR used for the whitening in GFSK protocols
+ *
+ * \param [in]  seed          Initial LFSR value
+ */
+void LLCC68SetWhiteningSeed(uint16_t seed);
+
+/*!
+ * \brief Gets a 32-bit random value generated by the radio
+ *
+ * \remark A valid packet type must have been configured with \ref LLCC68SetPacketType
+ *         before using this command.
+ *
+ * \remark The radio must be in reception mode before executing this function
+ *         This code can potentially result in interrupt generation. It is the responsibility of
+ *         the calling code to disable radio interrupts before calling this function,
+ *         and re-enable them afterwards if necessary, or be certain that any interrupts
+ *         generated during this process will not cause undesired side-effects in the software.
+ *
+ *         Please note that the random numbers produced by the generator do not have a uniform or Gaussian distribution. If
+ *         uniformity is needed, perform appropriate software post-processing.
+ *
+ * \retval randomValue    32 bits random value
+ */
+uint32_t LLCC68GetRandom(void);
+
+/*!
+ * \brief Sets the radio in sleep mode
+ *
+ * \param [in]  sleepConfig   The sleep configuration describing data
+ *                            retention and RTC wake-up
+ */
+void LLCC68SetSleep(SleepParams_t sleepConfig);
+
+/*!
+ * \brief Sets the radio in configuration mode
+ *
+ * \param [in]  mode          The standby mode to put the radio into
+ */
+void LLCC68SetStandby(RadioStandbyModes_t mode);
+
+/*!
+ * \brief Sets the radio in FS mode
+ */
+void LLCC68SetFs(void);
+
+/*!
+ * \brief Sets the radio in transmission mode
+ *
+ * \param [in]  timeout       Structure describing the transmission timeout value
+ */
+void LLCC68SetTx(uint32_t timeout);
+
+/*!
+ * \brief Sets the radio in reception mode
+ *
+ * \param [in]  timeout       Structure describing the reception timeout value
+ */
+void LLCC68SetRx(uint32_t timeout);
+
+/*!
+ * \brief Sets the radio in reception mode with Boosted LNA gain
+ *
+ * \param [in]  timeout       Structure describing the reception timeout value
+ */
+void LLCC68SetRxBoosted(uint32_t timeout);
+
+/*!
+ * \brief Sets the Rx duty cycle management parameters
+ *
+ * \param [in]  rxTime        Structure describing reception timeout value
+ * \param [in]  sleepTime     Structure describing sleep timeout value
+ */
+void LLCC68SetRxDutyCycle(uint32_t rxTime, uint32_t sleepTime);
+
+/*!
+ * \brief Sets the radio in CAD mode
+ */
+void LLCC68SetCad(void);
+
+/*!
+ * \brief Sets the radio in continuous wave transmission mode
+ */
+void LLCC68SetTxContinuousWave(void);
+
+/*!
+ * \brief Sets the radio in continuous preamble transmission mode
+ */
+void LLCC68SetTxInfinitePreamble(void);
+
+/*!
+ * \brief Decide which interrupt will stop the internal radio rx timer.
+ *
+ * \param [in]  enable          [0: Timer stop after header/syncword detection
+ *                               1: Timer stop after preamble detection]
+ */
+void LLCC68SetStopRxTimerOnPreambleDetect(bool enable);
+
+/*!
+ * \brief Set the number of symbol the radio will wait to validate a reception
+ *
+ * \param [in]  SymbNum          number of LoRa symbols
+ */
+void LLCC68SetLoRaSymbNumTimeout(uint8_t SymbNum);
+
+/*!
+ * \brief Sets the power regulators operating mode
+ *
+ * \param [in]  mode          [0: LDO, 1:DC_DC]
+ */
+void LLCC68SetRegulatorMode(RadioRegulatorMode_t mode);
+
+/*!
+ * \brief Calibrates the given radio block
+ *
+ * \param [in]  calibParam    The description of blocks to be calibrated
+ */
+void LLCC68Calibrate(CalibrationParams_t calibParam);
+
+/*!
+ * \brief Calibrates the Image rejection depending of the frequency
+ *
+ * \param [in]  freq    The operating frequency
+ */
+void LLCC68CalibrateImage(uint32_t freq);
+
+/*!
+ * \brief Activate the extention of the timeout when long preamble is used
+ *
+ * \param [in]  enable      The radio will extend the timeout to cope with long preamble
+ */
+void LLCC68SetLongPreamble(uint8_t enable);
+
+/*!
+ * \brief Sets the transmission parameters
+ *
+ * \param [in]  paDutyCycle     Duty Cycle for the PA
+ * \param [in]  hpMax          0 for sx1261, 7 for sx1262
+ * \param [in]  deviceSel       1 for sx1261, 0 for sx1262
+ * \param [in]  paLut           0 for 14dBm LUT, 1 for 22dBm LUT
+ */
+void LLCC68SetPaConfig(uint8_t paDutyCycle, uint8_t hpMax, uint8_t deviceSel, uint8_t paLut);
+
+/*!
+ * \brief Defines into which mode the chip goes after a TX / RX done
+ *
+ * \param [in]  fallbackMode    The mode in which the radio goes
+ */
+void LLCC68SetRxTxFallbackMode(uint8_t fallbackMode);
+
+/*!
+ * \brief Write data to the radio memory
+ *
+ * \param [in]  address       The address of the first byte to write in the radio
+ * \param [in]  buffer        The data to be written in radio's memory
+ * \param [in]  size          The number of bytes to write in radio's memory
+ */
+void LLCC68WriteRegisters(uint16_t address, uint8_t *buffer, uint16_t size);
+
+/*!
+ * \brief Read data from the radio memory
+ *
+ * \param [in]  address       The address of the first byte to read from the radio
+ * \param [out] buffer        The buffer that holds data read from radio
+ * \param [in]  size          The number of bytes to read from radio's memory
+ */
+void LLCC68ReadRegisters(uint16_t address, uint8_t *buffer, uint16_t size);
+
+/*!
+ * \brief Write data to the buffer holding the payload in the radio
+ *
+ * \param [in]  offset        The offset to start writing the payload
+ * \param [in]  buffer        The data to be written (the payload)
+ * \param [in]  size          The number of byte to be written
+ */
+void LLCC68WriteBuffer(uint8_t offset, uint8_t *buffer, uint8_t size);
+
+/*!
+ * \brief Read data from the buffer holding the payload in the radio
+ *
+ * \param [in]  offset        The offset to start reading the payload
+ * \param [out] buffer        A pointer to a buffer holding the data from the radio
+ * \param [in]  size          The number of byte to be read
+ */
+void LLCC68ReadBuffer(uint8_t offset, uint8_t *buffer, uint8_t size);
+
+/*!
+ * \brief   Sets the IRQ mask and DIO masks
+ *
+ * \param [in]  irqMask       General IRQ mask
+ * \param [in]  dio1Mask      DIO1 mask
+ * \param [in]  dio2Mask      DIO2 mask
+ * \param [in]  dio3Mask      DIO3 mask
+ */
+void LLCC68SetDioIrqParams(uint16_t irqMask, uint16_t dio1Mask, uint16_t dio2Mask, uint16_t dio3Mask);
+
+/*!
+ * \brief Returns the current IRQ status
+ *
+ * \retval      irqStatus     IRQ status
+ */
+uint16_t LLCC68GetIrqStatus(void);
+
+/*!
+ * \brief Indicates if DIO2 is used to control an RF Switch
+ *
+ * \param [in] enable     true of false
+ */
+void LLCC68SetDio2AsRfSwitchCtrl(uint8_t enable);
+
+/*!
+ * \brief Indicates if the Radio main clock is supplied from a tcxo
+ *
+ * \param [in] tcxoVoltage     voltage used to control the TCXO
+ * \param [in] timeout         time given to the TCXO to go to 32MHz
+ */
+void LLCC68SetDio3AsTcxoCtrl(RadioTcxoCtrlVoltage_t tcxoVoltage, uint32_t timeout);
+
+/*!
+ * \brief Sets the RF frequency
+ *
+ * \param [in]  frequency     RF frequency [Hz]
+ */
+void LLCC68SetRfFrequency(uint32_t frequency);
+
+/*!
+ * \brief Sets the radio for the given protocol
+ *
+ * \param [in]  packetType    [PACKET_TYPE_GFSK, PACKET_TYPE_LORA]
+ *
+ * \remark This method has to be called before SetRfFrequency,
+ *         SetModulationParams and SetPacketParams
+ */
+void LLCC68SetPacketType(RadioPacketTypes_t packetType);
+
+/*!
+ * \brief Gets the current radio protocol
+ *
+ * \retval      packetType    [PACKET_TYPE_GFSK, PACKET_TYPE_LORA]
+ */
+RadioPacketTypes_t LLCC68GetPacketType(void);
+
+/*!
+ * \brief Sets the transmission parameters
+ *
+ * \param [in]  power         RF output power [-18..13] dBm
+ * \param [in]  rampTime      Transmission ramp up time
+ */
+void LLCC68SetTxParams(int8_t power, RadioRampTimes_t rampTime);
+
+/*!
+ * \brief Set the modulation parameters
+ *
+ * \param [in]  modParams     A structure describing the modulation parameters
+ */
+void LLCC68SetModulationParams(ModulationParams_t *modParams);
+
+/*!
+ * \brief Sets the packet parameters
+ *
+ * \param [in]  packetParams  A structure describing the packet parameters
+ */
+void LLCC68SetPacketParams(PacketParams_t *packetParams);
+
+/*!
+ * \brief Sets the Channel Activity Detection (CAD) parameters
+ *
+ * \param [in]  cadSymbolNum   The number of symbol to use for CAD operations
+ *                             [LORA_CAD_01_SYMBOL, LORA_CAD_02_SYMBOL,
+ *                              LORA_CAD_04_SYMBOL, LORA_CAD_08_SYMBOL,
+ *                              LORA_CAD_16_SYMBOL]
+ * \param [in]  cadDetPeak     Limit for detection of SNR peak used in the CAD
+ * \param [in]  cadDetMin      Set the minimum symbol recognition for CAD
+ * \param [in]  cadExitMode    Operation to be done at the end of CAD action
+ *                             [LORA_CAD_ONLY, LORA_CAD_RX, LORA_CAD_LBT]
+ * \param [in]  cadTimeout     Defines the timeout value to abort the CAD activity
+ */
+void LLCC68SetCadParams(RadioLoRaCadSymbols_t cadSymbolNum, uint8_t cadDetPeak, uint8_t cadDetMin, RadioCadExitModes_t cadExitMode, uint32_t cadTimeout);
+
+/*!
+ * \brief Sets the data buffer base address for transmission and reception
+ *
+ * \param [in]  txBaseAddress Transmission base address
+ * \param [in]  rxBaseAddress Reception base address
+ */
+void LLCC68SetBufferBaseAddress(uint8_t txBaseAddress, uint8_t rxBaseAddress);
+
+/*!
+ * \brief Gets the current radio status
+ *
+ * \retval      status        Radio status
+ */
+RadioStatus_t LLCC68GetStatus(void);
+
+/*!
+ * \brief Returns the instantaneous RSSI value for the last packet received
+ *
+ * \retval      rssiInst      Instantaneous RSSI
+ */
+int8_t LLCC68GetRssiInst(void);
+
+/*!
+ * \brief Gets the last received packet buffer status
+ *
+ * \param [out] payloadLength Last received packet payload length
+ * \param [out] rxStartBuffer Last received packet buffer address pointer
+ */
+void LLCC68GetRxBufferStatus(uint8_t *payloadLength, uint8_t *rxStartBuffer);
+
+/*!
+ * \brief Gets the last received packet payload length
+ *
+ * \param [out] pktStatus     A structure of packet status
+ */
+void LLCC68GetPacketStatus(PacketStatus_t *pktStatus);
+
+/*!
+ * \brief Returns the possible system errors
+ *
+ * \retval sysErrors Value representing the possible sys failures
+ */
+RadioError_t LLCC68GetDeviceErrors(void);
+
+/*!
+ * \brief Clear all the errors in the device
+ */
+void LLCC68ClearDeviceErrors(void);
+
+/*!
+ * \brief Clears the IRQs
+ *
+ * \param [in]  irq           IRQ(s) to be cleared
+ */
+void LLCC68ClearIrqStatus(uint16_t irq);
+
+// #ifdef __cplusplus
+// }
+// #endif
+#endif
