@@ -36,6 +36,7 @@ static int64_t press_power_time = 0;
 static int64_t last_press_power_time = 0;
 bool is_press_power = FALSE;
 bool press_power_start = FALSE;
+static uint16_t colorBuffer[LCD_WIDTH * LCD_HEIGHT] = {0};
 
 static void WriteCommand(uint8_t cmd);
 static void WriteData(uint8_t data);
@@ -185,23 +186,13 @@ static void SetWindow(uint16_t xStart, uint16_t yStart, uint16_t xEnd, uint16_t 
 }
     
 void LCD_init() {
-    spi_bus_config_t buscfg = {
-        .miso_io_num = MISO,
-        .mosi_io_num = LCD_MOSI,
-        .sclk_io_num = LCD_SCLK,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .flags = 1,
-    };
-    
     spi_device_interface_config_t devcfg = {
         .clock_speed_hz = SPI_MASTER_FREQ_40M,  // SPI时钟频率
         .mode = 0,                  // SPI模式0
         .spics_io_num = -1,         // 不使用CS引脚
         .queue_size = 1,            // 传输队列大小
     };
-    // 初始化SPI总线
-    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
+    
     // 添加SPI设备
     ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &devcfg, &spi));
     key_init();
@@ -400,24 +391,28 @@ static void DrawRectangle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2,uin
 // 填充块
 static void FillBlock(uint16_t xStart, uint16_t yStart, uint16_t block_width, uint16_t block_height, uint16_t color)
 {
-    if (block_width == 0 || block_height == 0) {
+    if (block_width == 0 || block_height == 0)
+    {
         return;
     }
 
-    SetWindow( xStart, yStart, (xStart+block_width-1), (yStart+block_height-1) );
-    uint16_t *colorData = (uint16_t *)malloc(block_width * block_height * sizeof(uint16_t));
-    
-    if (colorData == NULL) {
-        printf("内存分配失败\n");
-        return;  // 处理内存分配失败的情况
-    }
-    for (int i = 0; i < block_width * block_height; i++) {
-        colorData[i] = color;
-    }
-    write_large_data(colorData, block_width * block_height);
 
-    // 释放动态分配的内存
-    free(colorData);
+    SetWindow(xStart, yStart, (xStart + block_width - 1), (yStart + block_height - 1));
+    
+    // 检查是否超出数组大小
+    uint32_t totalPixels = block_width * block_height;
+    if (totalPixels > LCD_WIDTH * LCD_HEIGHT) {
+        printf("Error: Block size exceeds buffer capacity\n");
+        return;
+    }
+    
+    // 填充颜色数据
+    for (uint32_t i = 0; i < totalPixels; i++) {
+        colorBuffer[i] = color;
+    }
+    
+    // 使用静态数组替代动态分配的内存
+    write_large_data(colorBuffer, totalPixels);
 }
 //在坐标为(xStart,yStart)的位置，
 //填充一个宽和高分别为block_width、block_height的图片
@@ -1071,63 +1066,62 @@ static void drawGradientBackground() {
     uint16_t endG = (endColor >> 5) & 0x3F;  // 绿色 6 位
     uint16_t endB = endColor & 0x1F;         // 蓝色 5 位
 
-    uint16_t *colorData = (uint16_t *)malloc(LCD_WIDTH * LCD_HEIGHT  * sizeof(uint16_t));
 
-    for(uint16_t y = 0; y < LCD_HEIGHT; y++){
-        for (uint16_t x = 0; x < LCD_WIDTH; x++) {
-        
+    for (uint16_t y = 0; y < LCD_HEIGHT; y++)
+    {
+        for (uint16_t x = 0; x < LCD_WIDTH; x++)
+        {
+
             uint16_t ratio = (x * 255) / (LCD_WIDTH - 1);
 
             uint16_t r = startR + ((endR - startR) * ratio) / 255;
             uint16_t g = startG + ((endG - startG) * ratio) / 255;
             uint16_t b = startB + ((endB - startB) * ratio) / 255;
 
-
-            colorData[y*LCD_WIDTH + x] = (r << 11) | (g << 5) | b;
+            colorBuffer[y * LCD_WIDTH + x] = (r << 11) | (g << 5) | b;
         }
     }
-    
-    SetWindow( 1, 1, LCD_WIDTH, LCD_HEIGHT );
-    write_large_data(colorData, LCD_WIDTH * LCD_HEIGHT);
 
-    free(colorData);
+    SetWindow(1, 1, LCD_WIDTH, LCD_HEIGHT);
+    write_large_data(colorBuffer, LCD_WIDTH * LCD_HEIGHT);
 }
 
 static void clearRectToGradient(uint16_t x0, uint16_t y0, uint16_t width, uint16_t height)
 {
     // 与 drawGradientBackground 相同的取色公式，需要同样的 startColor 和 endColor
-    uint16_t startR = (startColor >> 11) & 0x1F; 
-    uint16_t startG = (startColor >> 5)  & 0x3F; 
-    uint16_t startB =  startColor        & 0x1F;
+    uint16_t startR = (startColor >> 11) & 0x1F;
+    uint16_t startG = (startColor >> 5) & 0x3F;
+    uint16_t startB = startColor & 0x1F;
 
-    uint16_t endR   = (endColor   >> 11) & 0x1F;
-    uint16_t endG   = (endColor   >> 5)  & 0x3F;
-    uint16_t endB   =  endColor          & 0x1F;
+    uint16_t endR = (endColor >> 11) & 0x1F;
+    uint16_t endG = (endColor >> 5) & 0x3F;
+    uint16_t endB = endColor & 0x1F;
 
     // 防止越界
-    uint16_t xMax = x0 + width - 1; 
-    if(xMax > LCD_WIDTH)  xMax = LCD_WIDTH;
+    uint16_t xMax = x0 + width - 1;
+    if (xMax > LCD_WIDTH)
+        xMax = LCD_WIDTH;
     uint16_t yMax = y0 + height - 1;
-    if(yMax > LCD_HEIGHT) yMax = LCD_HEIGHT;
+    if (yMax > LCD_HEIGHT)
+        yMax = LCD_HEIGHT;
 
-    uint16_t *colorData = (uint16_t *)malloc((xMax-x0 + 1) * (yMax-y0 + 1) * sizeof(uint16_t));
 
-    for(uint16_t y = y0; y <= yMax; y++){
-        for(uint16_t x = x0; x <= xMax; x++){
-        
-            float ratio = (float)(x-1) / (float)LCD_WIDTH;
+    for (uint16_t y = y0; y <= yMax; y++)
+    {
+        for (uint16_t x = x0; x <= xMax; x++)
+        {
+
+            float ratio = (float)(x - 1) / (float)LCD_WIDTH;
 
             uint16_t r = startR + ratio * (endR - startR);
             uint16_t g = startG + ratio * (endG - startG);
             uint16_t b = startB + ratio * (endB - startB);
 
-            colorData[(y-y0) * (xMax-x0 + 1) + (x-x0)] = (r << 11) | (g << 5) | b;
+            colorBuffer[(y - y0) * (xMax - x0 + 1) + (x - x0)] = (r << 11) | (g << 5) | b;
         }
     }
-    SetWindow( x0, y0, xMax, yMax );
-    write_large_data(colorData, (xMax-x0 + 1) * (yMax-y0 + 1));
-    
-    free(colorData);
+    SetWindow(x0, y0, xMax, yMax);
+    write_large_data(colorBuffer, (xMax - x0 + 1) * (yMax - y0 + 1));
 }
 
 static void clear(){
@@ -1166,9 +1160,9 @@ static void DisplayBattery(){
 
     
     double voltage = ((double)battery_voltage * 1.5) / 1000.0; // 转换为伏特
-    // clearRectToGradient(30,5, 32, 16);
-    // ShowIntNum(30,5,(battery_voltage/2)*3,4,COLOR_WHITE,COLOR_BLACK,16,MODE_OVERLAPPING);
-    // printf("%lld ms - 电压: %.3f V\n", (long long)esp_timer_get_time() / 1000, voltage);
+    //clearRectToGradient(30,5, 32, 16);
+    //ShowIntNum(30,5,(battery_voltage/2)*3,4,COLOR_WHITE,COLOR_BLACK,16,MODE_OVERLAPPING);
+    printf("%lld ms - 电压: %.3f V\n", (long long)esp_timer_get_time() / 1000, voltage);
 
     if(voltage >= 3.9) {
         Battery = 5;

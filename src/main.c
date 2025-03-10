@@ -41,6 +41,20 @@ void ringbuffer_read_test(void *pvParameters)
         }
     }
 }
+
+void spi_bus_init()
+{
+    spi_bus_config_t buscfg = {
+        .miso_io_num = MISO,
+        .mosi_io_num = LCD_MOSI,
+        .sclk_io_num = LCD_SCLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .flags = 1,
+        .max_transfer_sz = 4096,
+    };
+    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
+}
 void app_main()
 {
     stream_buffer_create();
@@ -52,7 +66,7 @@ void app_main()
 
     xTaskCreate(ringbuffer_read_test, "audio_task", 8192, NULL, 8, &audio_task_handle);
     xTaskCreate(adc_continuous_read_task, "adc_read_task", 8192, NULL, 10, &s_task_handle);
-
+    spi_bus_init();
     // // // // // 添加延时确保ADC任务已经启动 vTaskDelay(pdMS_TO_TICKS(100));
     LCD_init();
     // ExampleLLCC68Sendtask(); // 发送数据
